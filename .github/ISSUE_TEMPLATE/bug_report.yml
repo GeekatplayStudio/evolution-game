@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a defect in simulation logic, UI, or gameplay behavior.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+      placeholder: Briefly describe the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include map size, zone, level, and turn count if relevant.
+      placeholder: |
+        1. Set zone to Rain, level 5
+        2. Run auto-advance for 20 turns
+        3. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: What happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Logs / screenshots / extra context
+      description: Paste simulation feed lines, console errors, or screenshots.
