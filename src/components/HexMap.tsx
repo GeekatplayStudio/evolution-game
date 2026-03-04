@@ -1,11 +1,11 @@
 "use client";
 
 import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch";
-import { HEX_COLORS } from "@/lib/game-constants";
-import { Hex } from "@/lib/types";
+import { Hex, Species } from "@/lib/types";
 
 interface HexMapProps {
   hexes: Hex[];
+  species: Species[];
   selectedHexId: string | null;
   onSelectHex: (hexId: string) => void;
 }
@@ -41,17 +41,11 @@ const hexDistance = (a: Pick<Hex, "q" | "r">, b: Pick<Hex, "q" | "r">) => {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-const waterDepthColor = (moisture: number, isMarsh: boolean) => {
+const waterDepthColor = (moisture: number) => {
   const normalized = clamp(moisture / 16, 0, 1);
-
-  if (isMarsh) {
-    const lightness = 44 - normalized * 16;
-    return `hsl(171 55% ${lightness}%)`;
-  }
-
-  const hue = 205 + normalized * 18;
-  const saturation = 66 + normalized * 20;
-  const lightness = 54 - normalized * 30;
+  const hue = 205 + normalized * 16;
+  const saturation = 64 + normalized * 18;
+  const lightness = 42 - normalized * 20;
   return `hsl(${hue} ${saturation}% ${lightness}%)`;
 };
 
@@ -61,8 +55,14 @@ const landVegetationColor = (hex: Hex, minWaterDistance: number) => {
   const nearWaterBoost =
     minWaterDistance <= 1 ? 1 : minWaterDistance <= 2 ? 0.78 : minWaterDistance <= 3 ? 0.52 : minWaterDistance <= 4 ? 0.22 : 0;
   const farDryPenalty = minWaterDistance >= 8 ? 1 : minWaterDistance >= 6 ? 0.68 : minWaterDistance >= 5 ? 0.38 : 0;
+  const moistureBalance = clamp(1 - Math.abs(moisture - 0.55) / 0.55, 0, 1);
+  const floodPenalty = clamp((moisture - 0.82) / 0.28, 0, 1);
 
-  const growthScore = clamp(biomass * 0.64 + moisture * 0.46 + nearWaterBoost * 0.34 - farDryPenalty * 0.5, 0, 1);
+  const growthScore = clamp(
+    biomass * 0.7 + moistureBalance * 0.42 + nearWaterBoost * 0.16 - farDryPenalty * 0.42 - floodPenalty * 0.36,
+    0,
+    1,
+  );
 
   const hue = 0 + growthScore * 120;
   const saturation = clamp(84 - growthScore * 16, 55, 90);
@@ -71,19 +71,41 @@ const landVegetationColor = (hex: Hex, minWaterDistance: number) => {
   return `hsl(${hue} ${saturation}% ${lightness}%)`;
 };
 
-export function HexMap({ hexes, selectedHexId, onSelectHex }: HexMapProps) {
+const marshEcologyColor = (hex: Hex, minWaterDistance: number) => {
+  const biomass = clamp(hex.vegetation / 120, 0, 1);
+  const moisture = clamp(hex.moisture / 13, 0, 1.35);
+  const moistureBalance = clamp(1 - Math.abs(moisture - 0.55) / 0.55, 0, 1);
+  const floodPenalty = clamp((moisture - 0.92) / 0.35, 0, 1);
+  const ecologicalHealth = clamp(
+    biomass * 0.68 + moistureBalance * 0.4 + (minWaterDistance <= 1 ? 0.08 : 0) - floodPenalty * 0.4,
+    0,
+    1,
+  );
+
+  if (floodPenalty > 0.55 && biomass < 0.45) {
+    return waterDepthColor(hex.moisture);
+  }
+
+  const hue = 165 - ecologicalHealth * 52;
+  const saturation = 48 + ecologicalHealth * 18;
+  const lightness = 38 - ecologicalHealth * 14;
+  return `hsl(${hue} ${saturation}% ${lightness}%)`;
+};
+
+export function HexMap({ hexes, species, selectedHexId, onSelectHex }: HexMapProps) {
   const points = polygonPoints();
   const waterHexes = hexes.filter((hex) => hex.type === "water" || hex.type === "marsh");
+  const speciesById = new Map(species.map((item) => [item.id, item]));
   const mapWidth = (Math.max(...hexes.map((hex) => hex.q), 0) + 1) * HEX_WIDTH + HEX_WIDTH;
   const mapHeight = (Math.max(...hexes.map((hex) => hex.r), 0) + 1) * HEX_SIZE * 1.5 + HEX_HEIGHT;
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/90">
       <div className="pointer-events-none absolute right-3 top-3 z-10 rounded-md border border-slate-700/70 bg-slate-900/80 px-2 py-1 text-[10px] text-slate-300">
-        Biomass values shown on each hex
+        Hex center = biomass/water, badges = creatures (G grazers, H hunters, ★ custom)
       </div>
       <div className="pointer-events-none absolute bottom-3 left-3 z-10 rounded-md border border-slate-700/70 bg-slate-900/80 px-2 py-1 text-[10px] text-slate-300">
-        Land growth: Red (dying) → Yellow → Green → Dark Green (flourishing) · Water label: W + moisture · Water color: light to deep blue
+        Ecological scale: Red = dry collapse · Dark Green = strong biomass with balanced water · Deep Blue = saturated water / flooded low biomass · click hex or badge for details
       </div>
       <TransformWrapper
         minScale={0.5}
@@ -123,30 +145,74 @@ export function HexMap({ hexes, selectedHexId, onSelectHex }: HexMapProps) {
             {hexes.map((hex) => {
               const { x, y } = toPixel(hex.q, hex.r);
               const isSelected = selectedHexId === hex.id;
-              const moistureOpacity = Math.min(0.45, hex.moisture / 25);
+              let grazerCount = 0;
+              let hunterCount = 0;
+              let customCount = 0;
+              for (const animal of hex.inhabitants) {
+                const resident = speciesById.get(animal.speciesId);
+                if (!resident) continue;
+                if (resident.diet === "herbivore") {
+                  grazerCount += 1;
+                } else {
+                  hunterCount += 1;
+                }
+                if (resident.id.startsWith("custom-")) customCount += 1;
+              }
+              const creatureMarkers = [
+                grazerCount > 0
+                  ? {
+                      key: "grazer",
+                      label: `G${grazerCount > 99 ? "99+" : grazerCount}`,
+                      fill: "#14532d",
+                      stroke: "#4ade80",
+                      text: "#dcfce7",
+                    }
+                  : null,
+                hunterCount > 0
+                  ? {
+                      key: "hunter",
+                      label: `H${hunterCount > 99 ? "99+" : hunterCount}`,
+                      fill: "#7c2d12",
+                      stroke: "#fb923c",
+                      text: "#ffedd5",
+                    }
+                  : null,
+                customCount > 0
+                  ? {
+                      key: "custom",
+                      label: `★${customCount > 99 ? "99+" : customCount}`,
+                      fill: "#854d0e",
+                      stroke: "#facc15",
+                      text: "#fef9c3",
+                    }
+                  : null,
+              ].filter((item): item is NonNullable<typeof item> => Boolean(item));
+              const moistureOpacity = hex.type === "water" ? Math.min(0.14, hex.moisture / 120) : 0;
               const minWaterDistance =
                 waterHexes.length === 0
                   ? 999
                   : waterHexes.reduce((best, waterHex) => Math.min(best, hexDistance(hex, waterHex)), Infinity);
               const fillColor =
-                hex.type === "water" || hex.type === "marsh"
-                  ? waterDepthColor(hex.moisture, hex.type === "marsh")
-                  : landVegetationColor(hex, minWaterDistance);
+                hex.type === "water"
+                  ? waterDepthColor(hex.moisture)
+                  : hex.type === "marsh"
+                    ? marshEcologyColor(hex, minWaterDistance)
+                    : landVegetationColor(hex, minWaterDistance);
               const lushOpacity =
                 hex.type === "water" || hex.type === "marsh"
                   ? 0
                   : minWaterDistance <= 2
-                    ? 0.24
+                    ? 0.14
                     : minWaterDistance <= 3
-                      ? 0.14
+                      ? 0.08
                       : 0;
               const aridOpacity =
                 hex.type === "water" || hex.type === "marsh"
                   ? 0
                   : minWaterDistance >= 7
-                    ? 0.28
+                    ? 0.18
                     : minWaterDistance >= 5
-                      ? 0.16
+                      ? 0.1
                       : 0;
 
               return (
@@ -160,6 +226,17 @@ export function HexMap({ hexes, selectedHexId, onSelectHex }: HexMapProps) {
                     className="cursor-pointer transition-all hover:opacity-100"
                     onClick={() => onSelectHex(hex.id)}
                   />
+                  {hex.inhabitants.length > 0 && (
+                    <circle
+                      cx={0}
+                      cy={0}
+                      r={HEX_SIZE * 0.72}
+                      fill="none"
+                      stroke={isSelected ? "#f8fafc" : "rgba(241,245,249,0.22)"}
+                      strokeWidth={isSelected ? 1.25 : 0.8}
+                      className="pointer-events-none"
+                    />
+                  )}
                   <polygon
                     points={points}
                     fill="#38bdf8"
@@ -174,7 +251,7 @@ export function HexMap({ hexes, selectedHexId, onSelectHex }: HexMapProps) {
                   )}
                   <text
                     x={0}
-                    y={2}
+                    y={3}
                     textAnchor="middle"
                     className="pointer-events-none select-none fill-slate-100 text-[8px] font-semibold"
                   >
@@ -191,6 +268,49 @@ export function HexMap({ hexes, selectedHexId, onSelectHex }: HexMapProps) {
                     >
                       Lvl
                     </text>
+                  )}
+                  {creatureMarkers.length > 0 && (
+                    <g
+                      onClick={() => onSelectHex(hex.id)}
+                      className="cursor-pointer"
+                    >
+                      {(() => {
+                        const widths = creatureMarkers.map((marker) => 10 + marker.label.length * 4.1);
+                        const gap = 2.5;
+                        const totalWidth =
+                          widths.reduce((sum, width) => sum + width, 0) + Math.max(0, widths.length - 1) * gap;
+                        let startX = -totalWidth / 2;
+
+                        return creatureMarkers.map((marker, index) => {
+                          const markerWidth = widths[index];
+                          const markerCenterX = startX + markerWidth / 2;
+                          startX += markerWidth + gap;
+
+                          return (
+                            <g key={marker.key} transform={`translate(${markerCenterX}, ${-14})`}>
+                              <rect
+                                x={-markerWidth / 2}
+                                y={-6}
+                                width={markerWidth}
+                                height={12}
+                                rx={5.8}
+                                fill={marker.fill}
+                                stroke={marker.stroke}
+                                strokeWidth={0.85}
+                              />
+                              <text
+                                x={0}
+                                y={2.1}
+                                textAnchor="middle"
+                                style={{ fill: marker.text, fontSize: "5.2px", fontWeight: 700, userSelect: "none" }}
+                              >
+                                {marker.label}
+                              </text>
+                            </g>
+                          );
+                        });
+                      })()}
+                    </g>
                   )}
                 </g>
               );

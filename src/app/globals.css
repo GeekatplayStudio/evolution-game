@@ -16,7 +16,7 @@ body {
     radial-gradient(circle at 85% 10%, rgba(34, 197, 94, 0.08), transparent 30%),
     linear-gradient(180deg, #020617 0%, #0b1220 50%, #020617 100%);
   color: var(--color-foreground);
-  font-family: Inter, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
 }
 
 * {
