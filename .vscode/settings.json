@@ -1,0 +1,35 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "npx create-next-app@latest": true,
+        "/^cmd /c npx create-next-app@latest \\. --ts --tailwind --eslint --app --src-dir --import-alias \"@/\\*\" --use-npm --yes$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cmd /c npx -y create-next-app@latest \\. --ts --tailwind --eslint --app --src-dir --import-alias \"@/\\*\" --use-npm --yes$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cmd /c \"echo y\\|npx create-next-app@latest \\. --ts --tailwind --eslint --app --src-dir --import-alias @/\\* --use-npm --yes\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "npm init": true,
+        "/^cmd /c npm init -y$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cmd /c npm install next@16 react react-dom zustand @tanstack/react-table react-zoom-pan-pinch clsx tailwind-merge lucide-react$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cmd /c npm install -D typescript @types/node @types/react @types/react-dom tailwindcss @tailwindcss/postcss postcss eslint eslint-config-next$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cmd /c npm run build$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "git -C d:\\Evolution-game": true
+    }
+}
