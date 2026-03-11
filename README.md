@@ -32,6 +32,8 @@ Open: `http://localhost:3000` (or next available port shown in terminal)
 - `npm run build` — production build
 - `npm run start` — run production server
 - `npm run lint` — lint project
+- `npm run test` — run automated tests
+- `npm run test:watch` — run tests in watch mode
 
 ## Project Structure
 - `src/app` — Next.js app entry/layout

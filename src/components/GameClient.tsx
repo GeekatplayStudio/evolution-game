@@ -1,11 +1,13 @@
 "use client";
 
+import { Activity, CloudLightning, CloudRain, Droplets, Flame, Leaf, Mountain, Snowflake, SunMedium, Users, Waves } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CreatureDesigner } from "@/components/CreatureDesigner";
 import { HexDetails } from "@/components/HexDetails";
-import { HexMap } from "@/components/HexMap";
+import { HexMap, type MapOverlayMode } from "@/components/HexMap";
 import { MutationLab } from "@/components/MutationLab";
 import { SpeciesTable } from "@/components/SpeciesTable";
+import { TrendChart } from "@/components/TrendChart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -14,6 +16,14 @@ import { useGameStore } from "@/store/useGameStore";
 type DrawerMode = "systems" | "intel" | "evolution" | "events";
 
 type SpeciesHexStatus = "core" | "spreading" | "stable" | "stressed";
+
+const OVERLAY_OPTIONS: { id: MapOverlayMode; label: string; icon: typeof Activity }[] = [
+  { id: "ecology", label: "Ecology", icon: Activity },
+  { id: "moisture", label: "Moisture", icon: Droplets },
+  { id: "biomass", label: "Biomass", icon: Leaf },
+  { id: "elevation", label: "Relief", icon: Mountain },
+  { id: "population", label: "Population", icon: Users },
+];
 
 interface SpeciesFootprintEntry {
   hexId: string;
@@ -69,10 +79,12 @@ const DRAWER_META: Record<DrawerMode, { label: string; eyebrow: string; title: s
 function HudMetric({
   label,
   value,
+  icon: Icon,
   tone = "neutral",
 }: {
   label: string;
   value: string;
+  icon?: typeof Activity;
   tone?: "neutral" | "cyan" | "emerald" | "amber";
 }) {
   const toneClass =
@@ -86,7 +98,10 @@ function HudMetric({
 
   return (
     <div className={cn("min-w-[6.4rem] rounded-xl border px-2.5 py-1.5", toneClass)}>
-      <p className="text-[9px] uppercase tracking-[0.16em] text-slate-300/80">{label}</p>
+      <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-[0.16em] text-slate-300/80">
+        {Icon ? <Icon className="h-3 w-3" /> : null}
+        <p>{label}</p>
+      </div>
       <p className="mt-0.5 text-xs font-semibold tracking-wide sm:text-sm">{value}</p>
     </div>
   );
@@ -124,6 +139,7 @@ export function GameClient() {
   const [autoAdvancePresetIndex, setAutoAdvancePresetIndex] = useState(6);
   const [activeDrawer, setActiveDrawer] = useState<DrawerMode | null>(null);
   const [isDesignerOpen, setIsDesignerOpen] = useState(false);
+  const [mapOverlayMode, setMapOverlayMode] = useState<MapOverlayMode>("ecology");
 
   const {
     turn,
@@ -186,6 +202,34 @@ export function GameClient() {
     };
   }, [isAutoAdvancing, autoAdvancePresetIndex, nextTurn]);
 
+  const [trendHistory, setTrendHistory] = useState<
+    { turn: number; population: number; moisture: number; drought: number; evolution: number }[]
+  >([]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setTrendHistory((current) => {
+        const snapshot = {
+          turn,
+          population: speciesStats.reduce((sum, item) => sum + item.population, 0),
+          moisture: climateMoistureIndex * 100,
+          drought: droughtDebt,
+          evolution: evolutionPoints,
+        };
+
+        if (current[current.length - 1]?.turn === turn) {
+          return [...current.slice(0, -1), snapshot];
+        }
+
+        return [...current, snapshot].slice(-24);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [turn, speciesStats, climateMoistureIndex, droughtDebt, evolutionPoints]);
+
   const selectedHex = useMemo(
     () => hexes.find((hex) => hex.id === selectedHexId) ?? null,
     [hexes, selectedHexId],
@@ -197,6 +241,32 @@ export function GameClient() {
   const selectedSpecies = useMemo(
     () => species.find((item) => item.id === selectedSpeciesId) ?? null,
     [selectedSpeciesId, species],
+  );
+  const selectedSpeciesTraits = useMemo(
+    () =>
+      (selectedSpecies?.traits ?? []).map((trait) =>
+        trait
+          .split("_")
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(" "),
+      ),
+    [selectedSpecies],
+  );
+  const selectedSpeciesStatCards = useMemo(
+    () =>
+      selectedSpecies
+        ? [
+            { label: "Speed", value: selectedSpecies.baseSpeed, max: 6, tone: "cyan" },
+            { label: "Metabolism", value: selectedSpecies.baseMetabolism, max: 18, tone: "amber" },
+            { label: "Awareness", value: selectedSpecies.awareness, max: 6, tone: "emerald" },
+            { label: "Defense", value: selectedSpecies.defense, max: 6, tone: "violet" },
+            { label: "Attack", value: selectedSpecies.attackPower, max: 6, tone: "rose" },
+            { label: "Fecundity", value: selectedSpecies.fecundity, max: 6, tone: "cyan" },
+            { label: "Heat", value: selectedSpecies.heatTolerance, max: 6, tone: "amber" },
+            { label: "Cold", value: selectedSpecies.coldTolerance, max: 6, tone: "emerald" },
+          ]
+        : [],
+    [selectedSpecies],
   );
   const speciesNameById = useMemo(
     () => Object.fromEntries(species.map((item) => [item.id, item.name])),
@@ -315,6 +385,28 @@ export function GameClient() {
         .slice(0, 8),
     [speciesStats],
   );
+  const populationTrend = useMemo(() => trendHistory.map((item) => item.population), [trendHistory]);
+  const moistureTrend = useMemo(() => trendHistory.map((item) => item.moisture), [trendHistory]);
+  const droughtTrend = useMemo(() => trendHistory.map((item) => item.drought), [trendHistory]);
+  const evolutionTrend = useMemo(() => trendHistory.map((item) => item.evolution), [trendHistory]);
+  const weatherVisual = useMemo(() => {
+    if (weather === "rain") {
+      return { icon: CloudRain, accent: "text-cyan-100", badge: "border-cyan-300/25 bg-cyan-300/10" };
+    }
+    if (weather === "storm") {
+      return { icon: CloudLightning, accent: "text-violet-100", badge: "border-violet-300/25 bg-violet-300/10" };
+    }
+    if (weather === "drought") {
+      return { icon: Waves, accent: "text-amber-100", badge: "border-amber-300/25 bg-amber-300/10" };
+    }
+    if (weather === "heatwave") {
+      return { icon: Flame, accent: "text-orange-100", badge: "border-orange-300/25 bg-orange-300/10" };
+    }
+    if (weather === "cold_snap") {
+      return { icon: Snowflake, accent: "text-sky-100", badge: "border-sky-300/25 bg-sky-300/10" };
+    }
+    return { icon: SunMedium, accent: "text-amber-50", badge: "border-amber-300/20 bg-amber-300/8" };
+  }, [weather]);
 
   const toggleDrawer = (mode: DrawerMode) => {
     setActiveDrawer((current) => (current === mode ? null : mode));
@@ -396,12 +488,12 @@ export function GameClient() {
               </div>
 
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <HudMetric label="Turn" value={`${turn} · M${month} · Y${year}`} tone="cyan" />
-                <HudMetric label="Weather" value={weather.replace("_", " ").toUpperCase()} />
-                <HudMetric label="Hydrology" value={`${(climateMoistureIndex * 100).toFixed(0)}% Moisture`} tone="emerald" />
-                <HudMetric label="Population" value={`${totalPopulation} Creatures`} tone="emerald" />
-                <HudMetric label="Evolution" value={`${evolutionPoints} Points`} tone="amber" />
-                <HudMetric label="Focus" value={selectedTileLabel} />
+                <HudMetric label="Turn" value={`${turn} · M${month} · Y${year}`} icon={Activity} tone="cyan" />
+                <HudMetric label="Weather" value={weather.replace("_", " ").toUpperCase()} icon={weatherVisual.icon} />
+                <HudMetric label="Hydrology" value={`${(climateMoistureIndex * 100).toFixed(0)}% Moisture`} icon={Droplets} tone="emerald" />
+                <HudMetric label="Population" value={`${totalPopulation} Creatures`} icon={Users} tone="emerald" />
+                <HudMetric label="Evolution" value={`${evolutionPoints} Points`} icon={Leaf} tone="amber" />
+                <HudMetric label="Focus" value={selectedTileLabel} icon={Mountain} />
               </div>
             </div>
           </div>
@@ -433,11 +525,46 @@ export function GameClient() {
                   </ul>
                 )}
               </div>
+              <div className="absolute left-4 top-[8.25rem] z-20 max-w-[25rem] rounded-2xl border border-white/10 bg-slate-950/72 px-3 py-2 shadow-xl backdrop-blur-xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[9px] uppercase tracking-[0.18em] text-slate-400">Visual Overlay</span>
+                  {OVERLAY_OPTIONS.map((option) => {
+                    const Icon = option.icon;
+
+                    return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] transition-colors",
+                        mapOverlayMode === option.id
+                          ? "border-cyan-300/40 bg-cyan-300/15 text-cyan-100"
+                          : "border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.09]",
+                      )}
+                      onClick={() => setMapOverlayMode(option.id)}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Icon className="h-3 w-3" />
+                        {option.label}
+                      </span>
+                    </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="pointer-events-none absolute bottom-4 left-4 z-20 max-w-[24rem] rounded-2xl border border-white/10 bg-slate-950/68 px-3 py-2 text-xs text-slate-300 shadow-xl">
                 Balanced water grows life. Too little moisture pushes tiles red. Too much flooding pushes them toward blue and suppresses biomass.
               </div>
               <div className="h-full p-2 sm:p-3">
-                <HexMap hexes={hexes} species={species} selectedHexId={selectedHexId} onSelectHex={handleSelectHex} />
+                <HexMap
+                  hexes={hexes}
+                  species={species}
+                  selectedHexId={selectedHexId}
+                  overlayMode={mapOverlayMode}
+                  weather={weather}
+                  season={season}
+                  onSelectHex={handleSelectHex}
+                />
               </div>
             </div>
           </div>
@@ -544,6 +671,70 @@ export function GameClient() {
                           <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Wet Bias</p>
                           <p className="mt-1 font-semibold">{cycleWetBias.toFixed(2)}</p>
                         </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-white/10 bg-white/[0.04]">
+                      <CardHeader>
+                        <CardTitle>Weather Signal</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className={cn("rounded-2xl border px-4 py-4", weatherVisual.badge)}>
+                          <div className="flex items-center gap-3">
+                            <weatherVisual.icon className={cn("h-8 w-8", weatherVisual.accent)} />
+                            <div>
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Current weather</p>
+                              <p className="mt-1 text-lg font-semibold text-slate-100">{weather.replace("_", " ").toUpperCase()}</p>
+                              <p className="mt-1 text-sm text-slate-300">{moistureSeasonLabel} · {climateLabel}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <TrendChart
+                            title="Moisture"
+                            subtitle="Recent whole-map hydrology"
+                            values={moistureTrend}
+                            colorClassName="text-cyan-200"
+                            stroke="#38bdf8"
+                            fill="#38bdf8"
+                            formatter={(value) => `${value.toFixed(0)}%`}
+                          />
+                          <TrendChart
+                            title="Drought"
+                            subtitle="Accumulated dry pressure"
+                            values={droughtTrend}
+                            colorClassName="text-amber-200"
+                            stroke="#f59e0b"
+                            fill="#f59e0b"
+                            formatter={(value) => value.toFixed(2)}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-white/10 bg-white/[0.04]">
+                      <CardHeader>
+                        <CardTitle>Simulation Trends</CardTitle>
+                      </CardHeader>
+                      <CardContent className="grid gap-3 sm:grid-cols-2">
+                        <TrendChart
+                          title="Population"
+                          subtitle="Total creature count over time"
+                          values={populationTrend}
+                          colorClassName="text-emerald-200"
+                          stroke="#4ade80"
+                          fill="#4ade80"
+                          formatter={(value) => value.toFixed(0)}
+                        />
+                        <TrendChart
+                          title="Evolution"
+                          subtitle="Accumulated player adaptation points"
+                          values={evolutionTrend}
+                          colorClassName="text-fuchsia-200"
+                          stroke="#e879f9"
+                          fill="#e879f9"
+                          formatter={(value) => value.toFixed(0)}
+                        />
                       </CardContent>
                     </Card>
 
@@ -867,6 +1058,84 @@ export function GameClient() {
                       </CardHeader>
                       <CardContent>
                         <SpeciesTable rows={speciesStats} selectedSpeciesId={selectedSpeciesId} onSelect={handleSelectSpecies} />
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-white/10 bg-white/[0.04]">
+                      <CardHeader>
+                        <CardTitle>Species Intelligence</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {!selectedSpecies ? (
+                          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm text-slate-400">
+                            Select a species to inspect traits, ecological strengths, and stress profile.
+                          </div>
+                        ) : (
+                          <>
+                            <div className="grid grid-cols-3 gap-2 text-sm">
+                              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Diet</p>
+                                <p className="mt-1 font-semibold capitalize text-slate-100">{selectedSpecies.diet}</p>
+                              </div>
+                              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Size</p>
+                                <p className="mt-1 font-semibold text-slate-100">{selectedSpecies.size.toFixed(1)}</p>
+                              </div>
+                              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Maturity</p>
+                                <p className="mt-1 font-semibold text-slate-100">{selectedSpecies.maturityAge} turns</p>
+                              </div>
+                            </div>
+
+                            <div>
+                              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Trait Stack</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {selectedSpeciesTraits.length === 0 ? (
+                                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-400">
+                                    No active traits
+                                  </span>
+                                ) : (
+                                  selectedSpeciesTraits.map((trait) => (
+                                    <span
+                                      key={trait}
+                                      className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100"
+                                    >
+                                      {trait}
+                                    </span>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {selectedSpeciesStatCards.map((stat) => {
+                                const width = `${Math.max(8, (stat.value / stat.max) * 100)}%`;
+                                const toneClass =
+                                  stat.tone === "amber"
+                                    ? "from-amber-300/80 to-orange-400/80"
+                                    : stat.tone === "emerald"
+                                      ? "from-emerald-300/80 to-green-400/80"
+                                      : stat.tone === "violet"
+                                        ? "from-violet-300/80 to-fuchsia-400/80"
+                                        : stat.tone === "rose"
+                                          ? "from-rose-300/80 to-pink-400/80"
+                                          : "from-cyan-300/80 to-sky-400/80";
+
+                                return (
+                                  <div key={stat.label} className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2 text-xs">
+                                      <p className="uppercase tracking-[0.18em] text-slate-400">{stat.label}</p>
+                                      <p className="font-semibold text-slate-100">{stat.value.toFixed(1)}</p>
+                                    </div>
+                                    <div className="mt-2 h-2 rounded-full bg-slate-900/80">
+                                      <div className={cn("h-2 rounded-full bg-gradient-to-r", toneClass)} style={{ width }} />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
                       </CardContent>
                     </Card>
 

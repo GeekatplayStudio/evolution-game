@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, Droplets, Leaf, PawPrint, ShieldAlert } from "lucide-react";
 import { Hex } from "@/lib/types";
 
 interface HexDetailsProps {
@@ -16,8 +17,33 @@ export function HexDetails({ hex, speciesNameById = {} }: HexDetailsProps) {
     );
   }
 
+  const moistureRatio = Math.min(100, (hex.moisture / Math.max(1, hex.saturationCapacity + 6)) * 100);
+  const biomassRatio = Math.min(100, (hex.vegetation / 120) * 100);
+  const carrionRatio = Math.min(100, (hex.carrion / 40) * 100);
+  const grazingRatio = Math.min(100, ((hex.grazingPressure ?? 0) / 20) * 100);
+  const hydrationState =
+    hex.moisture < 2.5 ? "Dry Stress" : hex.moisture > hex.saturationCapacity ? "Flood Pressure" : "Balanced";
+  const biomassState = hex.vegetation < 18 ? "Collapsed" : hex.vegetation > 72 ? "Lush" : "Recovering";
+
   return (
     <div className="space-y-4 text-sm text-slate-200">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/8 px-3 py-3">
+          <div className="flex items-center gap-2 text-cyan-200/80">
+            <Droplets className="h-4 w-4" />
+            <p className="text-[10px] uppercase tracking-[0.18em]">Hydration State</p>
+          </div>
+          <p className="mt-1 font-semibold text-cyan-50">{hydrationState}</p>
+        </div>
+        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/8 px-3 py-3">
+          <div className="flex items-center gap-2 text-emerald-200/80">
+            <Leaf className="h-4 w-4" />
+            <p className="text-[10px] uppercase tracking-[0.18em]">Biomass State</p>
+          </div>
+          <p className="mt-1 font-semibold text-emerald-50">{biomassState}</p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3">
           <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Type</p>
@@ -47,6 +73,28 @@ export function HexDetails({ hex, speciesNameById = {} }: HexDetailsProps) {
           <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">Population</p>
           <p className="mt-1 font-semibold">{hex.inhabitants.length}</p>
         </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {[
+          { label: "Moisture", value: moistureRatio, reading: hex.moisture.toFixed(1), tone: "from-cyan-300/80 to-sky-400/80" },
+          { label: "Biomass", value: biomassRatio, reading: hex.vegetation.toFixed(1), tone: "from-emerald-300/80 to-green-400/80" },
+          { label: "Carrion", value: carrionRatio, reading: hex.carrion.toFixed(1), tone: "from-rose-300/80 to-orange-400/80", icon: ShieldAlert },
+          { label: "Grazing", value: grazingRatio, reading: (hex.grazingPressure ?? 0).toFixed(1), tone: "from-amber-300/80 to-yellow-400/80", icon: PawPrint },
+        ].map((metric) => (
+          <div key={metric.label} className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 text-slate-400">
+                {metric.icon ? <metric.icon className="h-3.5 w-3.5" /> : metric.label === "Moisture" ? <Droplets className="h-3.5 w-3.5" /> : metric.label === "Biomass" ? <Leaf className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                <p className="uppercase tracking-[0.18em]">{metric.label}</p>
+              </div>
+              <p className="font-semibold text-slate-100">{metric.reading}</p>
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-slate-900/80">
+              <div className={`h-2 rounded-full bg-gradient-to-r ${metric.tone}`} style={{ width: `${Math.max(6, metric.value)}%` }} />
+            </div>
+          </div>
+        ))}
       </div>
 
       <div>

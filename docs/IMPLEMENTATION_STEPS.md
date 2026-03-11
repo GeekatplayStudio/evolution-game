@@ -43,28 +43,31 @@
 
 ---
 
+## Current Delivery Status
+
+- MVP playable loop: Done
+- Save/load persistence: Done
+- Deterministic seed workflow: Done
+- Build verification: Done
+- Automated test coverage: In Progress
+- Balance/content expansion: Not Started
+
+---
+
 ## Next Implementation Steps (Roadmap)
 
-### Step 1: Save/Load State
-- Add localStorage persistence (`zustand/middleware/persist`).
-- Add “Save Snapshot” + “Load Snapshot” controls.
-
-### Step 2: Deterministic Simulation Mode
-- Inject seeded random generator for reproducible debugging.
-- Add seed display in UI.
-
-### Step 3: Balancing Pass
+### Step 1: Balancing Pass
 - Tune growth/metabolism/reproduction constants.
 - Add extinction guardrails for early-game stability.
 
-### Step 4: Testing Automation
+### Step 2: Testing Automation
 - Add Vitest and tests for:
   - season transitions
   - water overflow
   - mutation application
   - reproduction and death constraints
 
-### Step 5: Content Expansion
+### Step 3: Content Expansion
 - Add marsh/aquatic specialization depth.
 - Add scavenger behavior and carrion attraction radius.
 - Add AI memory weighting for successful feeding hexes.
